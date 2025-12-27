@@ -28,7 +28,7 @@ export default function GameScreen() {
     if (gameState.isGameOver && !showMenu) {
       setTimeout(() => {
         setShowMenu(true);
-      }, 2000);
+      }, 3000); // Give time for "game over" announcement
     }
   }, [gameState.isGameOver, showMenu]);
 

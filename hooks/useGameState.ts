@@ -30,6 +30,7 @@ export function useGameState() {
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const soundStartTimeRef = useRef<number>(0);
   const hasRespondedRef = useRef<boolean>(false);
+  const isGameActiveRef = useRef<boolean>(false);
 
   const handleTimeout = useCallback(() => {
     console.log('User timed out - no response');
@@ -50,21 +51,32 @@ export function useGameState() {
     // Play failure sound and haptic
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     audioEngine.playFailureSound();
-
-    // Check if game is over
-    if (gameState.lives - 1 <= 0) {
-      stopGame();
-      audioEngine.speak(`Game over. Final score: ${gameState.score}`);
-    }
-  }, [gameState.lives, gameState.score]);
+  }, []);
 
   const playNextRound = useCallback(async () => {
-    if (gameState.isGameOver) {
+    // Check if game is still active
+    if (!isGameActiveRef.current) {
+      console.log('Game is not active, stopping round');
+      return;
+    }
+
+    // Check current game state for game over
+    setGameState(prev => {
+      if (prev.isGameOver) {
+        console.log('Game is over, stopping rounds');
+        isGameActiveRef.current = false;
+        audioEngine.speak(`Game over. Final score: ${prev.score}`);
+        return prev;
+      }
+      return prev;
+    });
+
+    if (!isGameActiveRef.current) {
       return;
     }
 
     const direction = getRandomDirection();
-    console.log('Playing next round with direction:', direction, 'interval:', gameState.currentInterval);
+    console.log('Playing next round with direction:', direction);
     
     hasRespondedRef.current = false;
     
@@ -77,25 +89,33 @@ export function useGameState() {
     // Set timeout for user response
     const timeout = getReactionTimeout(gameState.currentInterval);
     timeoutRef.current = setTimeout(() => {
-      if (!hasRespondedRef.current) {
+      if (!hasRespondedRef.current && isGameActiveRef.current) {
         handleTimeout();
+        
+        // Check if game should continue after timeout
+        setGameState(prev => {
+          if (prev.lives - 1 > 0) {
+            // Continue game after a short delay
+            setTimeout(() => {
+              playNextRound();
+            }, 500);
+          } else {
+            // Game over
+            isGameActiveRef.current = false;
+            audioEngine.speak(`Game over. Final score: ${prev.score}`);
+          }
+          return prev;
+        });
       }
     }, timeout);
-
-    // Schedule next round
-    gameLoopRef.current = setTimeout(() => {
-      if (!hasRespondedRef.current) {
-        // User didn't respond in time, already handled by timeout
-        return;
-      }
-      playNextRound();
-    }, gameState.currentInterval);
-  }, [gameState.currentInterval, gameState.isGameOver, handleTimeout]);
+  }, [gameState.currentInterval, handleTimeout]);
 
   const startGame = useCallback(async () => {
     console.log('Starting game');
     await audioEngine.initialize();
-    await audioEngine.speak('Game starting. Listen for the sound direction and tap the corresponding area.');
+    
+    // Play voice instructions
+    await audioEngine.speak('Game starting. Listen for the sound direction and tap the corresponding area. You have three lives. Get ten correct in a row to earn a bonus life.');
     
     setGameState({
       score: 0,
@@ -108,14 +128,20 @@ export function useGameState() {
       isGameOver: false,
     });
     
-    // Start first round after a short delay
+    isGameActiveRef.current = true;
+    
+    // Wait 4 seconds after voice instructions before starting first round
     setTimeout(() => {
-      playNextRound();
-    }, 2000);
+      if (isGameActiveRef.current) {
+        playNextRound();
+      }
+    }, 4000);
   }, [playNextRound]);
 
   const stopGame = useCallback(() => {
     console.log('Stopping game');
+    isGameActiveRef.current = false;
+    
     if (gameLoopRef.current) {
       clearTimeout(gameLoopRef.current);
       gameLoopRef.current = null;
@@ -132,7 +158,7 @@ export function useGameState() {
   }, []);
 
   const handleTap = useCallback(async (tappedDirection: Direction) => {
-    if (!gameState.isPlaying || !gameState.currentDirection || hasRespondedRef.current) {
+    if (!isGameActiveRef.current || !gameState.currentDirection || hasRespondedRef.current) {
       console.log('Tap ignored - game not active or already responded');
       return;
     }
@@ -178,6 +204,13 @@ export function useGameState() {
         currentInterval: newInterval,
         currentDirection: null,
       }));
+
+      // Continue to next round after a short delay
+      setTimeout(() => {
+        if (isGameActiveRef.current) {
+          playNextRound();
+        }
+      }, 500);
     } else {
       // Wrong answer
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -195,15 +228,24 @@ export function useGameState() {
       }));
 
       if (isGameOver) {
+        isGameActiveRef.current = false;
         stopGame();
         await audioEngine.speak(`Game over. Final score: ${gameState.score}`);
+      } else {
+        // Continue to next round after a short delay
+        setTimeout(() => {
+          if (isGameActiveRef.current) {
+            playNextRound();
+          }
+        }, 500);
       }
     }
-  }, [gameState, stopGame]);
+  }, [gameState, stopGame, playNextRound]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      isGameActiveRef.current = false;
       if (gameLoopRef.current) {
         clearTimeout(gameLoopRef.current);
       }
