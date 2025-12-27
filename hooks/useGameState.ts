@@ -1,25 +1,72 @@
 
-import { useState, useRef, useCallback } from 'react';
-import { GameState, getRandomDirection, getDelayForLevel, calculateScore } from '@/utils/gameLogic';
+import { useState, useRef, useCallback, useEffect } from 'react';
+import { 
+  GameState, 
+  getRandomDirection, 
+  getNextInterval, 
+  calculateScore,
+  INITIAL_INTERVAL,
+  INITIAL_LIVES,
+  MAX_LIVES,
+  STREAK_FOR_BONUS_LIFE,
+  getReactionTimeout
+} from '@/utils/gameLogic';
 import { audioEngine, Direction } from '@/utils/audioEngine';
 import * as Haptics from 'expo-haptics';
 
-export function useGameState(difficulty: 'slow' | 'normal' | 'fast' = 'normal') {
+export function useGameState() {
   const [gameState, setGameState] = useState<GameState>({
-    level: 1,
     score: 0,
+    lives: INITIAL_LIVES,
+    streak: 0,
     currentDirection: null,
     isPlaying: false,
     reactionTime: 0,
-    difficulty,
+    currentInterval: INITIAL_INTERVAL,
+    isGameOver: false,
   });
 
   const gameLoopRef = useRef<NodeJS.Timeout | null>(null);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const soundStartTimeRef = useRef<number>(0);
+  const hasRespondedRef = useRef<boolean>(false);
+
+  const handleTimeout = useCallback(() => {
+    console.log('User timed out - no response');
+    
+    setGameState(prev => {
+      const newLives = prev.lives - 1;
+      const isGameOver = newLives <= 0;
+      
+      return {
+        ...prev,
+        lives: newLives,
+        streak: 0,
+        isGameOver,
+        currentDirection: null,
+      };
+    });
+
+    // Play failure sound and haptic
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    audioEngine.playFailureSound();
+
+    // Check if game is over
+    if (gameState.lives - 1 <= 0) {
+      stopGame();
+      audioEngine.speak(`Game over. Final score: ${gameState.score}`);
+    }
+  }, [gameState.lives, gameState.score]);
 
   const playNextRound = useCallback(async () => {
+    if (gameState.isGameOver) {
+      return;
+    }
+
     const direction = getRandomDirection();
-    console.log('Playing next round with direction:', direction);
+    console.log('Playing next round with direction:', direction, 'interval:', gameState.currentInterval);
+    
+    hasRespondedRef.current = false;
     
     setGameState(prev => ({ ...prev, currentDirection: direction }));
     
@@ -27,19 +74,39 @@ export function useGameState(difficulty: 'slow' | 'normal' | 'fast' = 'normal') 
     await audioEngine.playDirectionalSound(direction);
     soundStartTimeRef.current = Date.now();
 
+    // Set timeout for user response
+    const timeout = getReactionTimeout(gameState.currentInterval);
+    timeoutRef.current = setTimeout(() => {
+      if (!hasRespondedRef.current) {
+        handleTimeout();
+      }
+    }, timeout);
+
     // Schedule next round
-    const delay = getDelayForLevel(gameState.level, difficulty);
     gameLoopRef.current = setTimeout(() => {
+      if (!hasRespondedRef.current) {
+        // User didn't respond in time, already handled by timeout
+        return;
+      }
       playNextRound();
-    }, delay);
-  }, [gameState.level, difficulty]);
+    }, gameState.currentInterval);
+  }, [gameState.currentInterval, gameState.isGameOver, handleTimeout]);
 
   const startGame = useCallback(async () => {
     console.log('Starting game');
     await audioEngine.initialize();
     await audioEngine.speak('Game starting. Listen for the sound direction and tap the corresponding area.');
     
-    setGameState(prev => ({ ...prev, isPlaying: true, score: 0, level: 1 }));
+    setGameState({
+      score: 0,
+      lives: INITIAL_LIVES,
+      streak: 0,
+      currentDirection: null,
+      isPlaying: true,
+      reactionTime: 0,
+      currentInterval: INITIAL_INTERVAL,
+      isGameOver: false,
+    });
     
     // Start first round after a short delay
     setTimeout(() => {
@@ -53,13 +120,29 @@ export function useGameState(difficulty: 'slow' | 'normal' | 'fast' = 'normal') 
       clearTimeout(gameLoopRef.current);
       gameLoopRef.current = null;
     }
-    setGameState(prev => ({ ...prev, isPlaying: false, currentDirection: null }));
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    setGameState(prev => ({ 
+      ...prev, 
+      isPlaying: false, 
+      currentDirection: null 
+    }));
   }, []);
 
   const handleTap = useCallback(async (tappedDirection: Direction) => {
-    if (!gameState.isPlaying || !gameState.currentDirection) {
-      console.log('Tap ignored - game not active');
+    if (!gameState.isPlaying || !gameState.currentDirection || hasRespondedRef.current) {
+      console.log('Tap ignored - game not active or already responded');
       return;
+    }
+
+    hasRespondedRef.current = true;
+
+    // Clear the timeout since user responded
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
     }
 
     const reactionTime = Date.now() - soundStartTimeRef.current;
@@ -70,28 +153,65 @@ export function useGameState(difficulty: 'slow' | 'normal' | 'fast' = 'normal') 
     if (isCorrect) {
       // Correct answer
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      await audioEngine.speak('Correct');
+      await audioEngine.playSuccessSound();
       
-      const points = calculateScore(reactionTime, difficulty);
+      const points = calculateScore(reactionTime, gameState.currentInterval);
       const newScore = gameState.score + points;
-      const newLevel = Math.floor(newScore / 500) + 1;
+      const newStreak = gameState.streak + 1;
+      
+      // Check if user earned a bonus life
+      let newLives = gameState.lives;
+      if (newStreak > 0 && newStreak % STREAK_FOR_BONUS_LIFE === 0 && newLives < MAX_LIVES) {
+        newLives = Math.min(newLives + 1, MAX_LIVES);
+        await audioEngine.speak('Bonus life earned!');
+      }
+
+      // Speed up the game
+      const newInterval = getNextInterval(gameState.currentInterval);
 
       setGameState(prev => ({
         ...prev,
         score: newScore,
-        level: newLevel,
+        streak: newStreak,
+        lives: newLives,
         reactionTime,
+        currentInterval: newInterval,
+        currentDirection: null,
       }));
-
-      if (newLevel > gameState.level) {
-        await audioEngine.speak(`Level ${newLevel}`);
-      }
     } else {
       // Wrong answer
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      await audioEngine.speak('Wrong direction');
+      await audioEngine.playFailureSound();
+      
+      const newLives = gameState.lives - 1;
+      const isGameOver = newLives <= 0;
+
+      setGameState(prev => ({
+        ...prev,
+        lives: newLives,
+        streak: 0,
+        isGameOver,
+        currentDirection: null,
+      }));
+
+      if (isGameOver) {
+        stopGame();
+        await audioEngine.speak(`Game over. Final score: ${gameState.score}`);
+      }
     }
-  }, [gameState, difficulty]);
+  }, [gameState, stopGame]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (gameLoopRef.current) {
+        clearTimeout(gameLoopRef.current);
+      }
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
 
   return {
     gameState,

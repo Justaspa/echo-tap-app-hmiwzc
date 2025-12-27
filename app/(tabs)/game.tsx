@@ -8,9 +8,8 @@ import { audioEngine } from '@/utils/audioEngine';
 import * as Haptics from 'expo-haptics';
 
 export default function GameScreen() {
-  const [difficulty, setDifficulty] = useState<'slow' | 'normal' | 'fast'>('normal');
   const [showMenu, setShowMenu] = useState(true);
-  const { gameState, startGame, stopGame, handleTap } = useGameState(difficulty);
+  const { gameState, startGame, stopGame, handleTap } = useGameState();
 
   useEffect(() => {
     // Initialize audio engine
@@ -23,6 +22,15 @@ export default function GameScreen() {
       stopGame();
     };
   }, []);
+
+  useEffect(() => {
+    // Show menu when game is over
+    if (gameState.isGameOver && !showMenu) {
+      setTimeout(() => {
+        setShowMenu(true);
+      }, 2000);
+    }
+  }, [gameState.isGameOver, showMenu]);
 
   const handleStartGame = async () => {
     setShowMenu(false);
@@ -42,12 +50,10 @@ export default function GameScreen() {
       'Tap the right side for right sounds. ' +
       'Tap the top for front sounds. ' +
       'Tap the bottom for back sounds. ' +
-      'React as quickly as possible to score more points.'
+      'You start with 3 lives. The game speeds up as you play. ' +
+      'Get 10 correct in a row to earn a bonus life. ' +
+      'The game ends when you run out of lives.'
     );
-  };
-
-  const handleSettings = async () => {
-    await audioEngine.speak('Settings. Choose your difficulty level.');
   };
 
   if (showMenu) {
@@ -58,6 +64,13 @@ export default function GameScreen() {
             Sound Direction Hunt
           </Text>
           
+          {gameState.isGameOver && (
+            <View style={styles.gameOverContainer}>
+              <Text style={styles.gameOverText}>Game Over!</Text>
+              <Text style={styles.finalScoreText}>Final Score: {gameState.score}</Text>
+            </View>
+          )}
+
           <TouchableOpacity
             style={styles.menuButton}
             onPress={handleStartGame}
@@ -75,46 +88,6 @@ export default function GameScreen() {
           >
             <Text style={styles.menuButtonText}>How to Play</Text>
           </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.menuButton}
-            onPress={handleSettings}
-            accessibilityLabel="Settings"
-            accessibilityHint="Double tap to open settings"
-          >
-            <Text style={styles.menuButtonText}>Settings</Text>
-          </TouchableOpacity>
-
-          <View style={styles.difficultyContainer}>
-            <Text style={styles.difficultyLabel}>Difficulty:</Text>
-            <View style={styles.difficultyButtons}>
-              {(['slow', 'normal', 'fast'] as const).map((level) => (
-                <TouchableOpacity
-                  key={level}
-                  style={[
-                    styles.difficultyButton,
-                    difficulty === level && styles.difficultyButtonActive,
-                  ]}
-                  onPress={async () => {
-                    setDifficulty(level);
-                    await audioEngine.speak(`Difficulty set to ${level}`);
-                    await Haptics.selectionAsync();
-                  }}
-                  accessibilityLabel={`${level} difficulty`}
-                  accessibilityState={{ selected: difficulty === level }}
-                >
-                  <Text
-                    style={[
-                      styles.difficultyButtonText,
-                      difficulty === level && styles.difficultyButtonTextActive,
-                    ]}
-                  >
-                    {level.charAt(0).toUpperCase() + level.slice(1)}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
         </View>
       </View>
     );
@@ -149,8 +122,18 @@ export default function GameScreen() {
             <Text style={styles.scoreText} accessibilityLiveRegion="polite">
               Score: {gameState.score}
             </Text>
-            <Text style={styles.levelText} accessibilityLiveRegion="polite">
-              Level: {gameState.level}
+            <View style={styles.livesContainer}>
+              <Text style={styles.livesLabel}>Lives:</Text>
+              <View style={styles.livesDisplay}>
+                {Array.from({ length: gameState.lives }).map((_, index) => (
+                  <View key={index} style={styles.lifeHeart}>
+                    <Text style={styles.lifeHeartText}>❤️</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+            <Text style={styles.streakText} accessibilityLiveRegion="polite">
+              Streak: {gameState.streak}
             </Text>
           </View>
 
@@ -205,8 +188,23 @@ const styles = StyleSheet.create({
     fontSize: 32,
     fontWeight: 'bold',
     color: colors.text,
-    marginBottom: 60,
+    marginBottom: 40,
     textAlign: 'center',
+  },
+  gameOverContainer: {
+    marginBottom: 40,
+    alignItems: 'center',
+  },
+  gameOverText: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: colors.accent,
+    marginBottom: 12,
+  },
+  finalScoreText: {
+    fontSize: 24,
+    fontWeight: '600',
+    color: colors.text,
   },
   menuButton: {
     backgroundColor: colors.accent,
@@ -223,45 +221,6 @@ const styles = StyleSheet.create({
   menuButtonText: {
     fontSize: 20,
     fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  difficultyContainer: {
-    marginTop: 40,
-    width: '100%',
-    maxWidth: 300,
-  },
-  difficultyLabel: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 12,
-    textAlign: 'center',
-  },
-  difficultyButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  difficultyButton: {
-    flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    borderRadius: 8,
-    marginHorizontal: 4,
-    backgroundColor: colors.card,
-    borderWidth: 2,
-    borderColor: colors.textSecondary,
-    alignItems: 'center',
-  },
-  difficultyButtonActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  difficultyButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  difficultyButtonTextActive: {
     color: '#FFFFFF',
   },
   gameArea: {
@@ -311,10 +270,33 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: 'bold',
     color: colors.text,
+    marginBottom: 16,
+  },
+  livesContainer: {
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  livesLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.textSecondary,
     marginBottom: 8,
   },
-  levelText: {
-    fontSize: 20,
+  livesDisplay: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  lifeHeart: {
+    width: 32,
+    height: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  lifeHeartText: {
+    fontSize: 24,
+  },
+  streakText: {
+    fontSize: 18,
     fontWeight: '600',
     color: colors.textSecondary,
   },
