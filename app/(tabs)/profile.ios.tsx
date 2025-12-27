@@ -1,75 +1,115 @@
-import React from "react";
-import { View, Text, StyleSheet, ScrollView } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { IconSymbol } from "@/components/IconSymbol";
-import { GlassView } from "expo-glass-effect";
-import { useTheme } from "@react-navigation/native";
+
+import React from 'react';
+import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { colors } from '@/styles/commonStyles';
 
 export default function ProfileScreen() {
-  const theme = useTheme();
-
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.background }]} edges={['top']}>
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.contentContainer}
+    <View style={styles.container}>
+      <ScrollView 
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
       >
-        <GlassView style={styles.profileHeader} glassEffectStyle="regular">
-          <IconSymbol ios_icon_name="person.circle.fill" android_material_icon_name="person" size={24} color={theme.colors.primary} />
-          <Text style={[styles.name, { color: theme.colors.text }]}>John Doe</Text>
-          <Text style={[styles.email, { color: theme.dark ? '#98989D' : '#666' }]}>john.doe@example.com</Text>
-        </GlassView>
+        <View style={styles.header}>
+          <Text style={styles.title}>About</Text>
+        </View>
 
-        <GlassView style={styles.section} glassEffectStyle="regular">
-          <View style={styles.infoRow}>
-            <IconSymbol ios_icon_name="phone.fill" android_material_icon_name="phone" size={24} color={theme.dark ? '#98989D' : '#666'} />
-            <Text style={[styles.infoText, { color: theme.colors.text }]}>+1 (555) 123-4567</Text>
-          </View>
-          <View style={styles.infoRow}>
-            <IconSymbol ios_icon_name="location.fill" android_material_icon_name="location-on" size={24} color={theme.dark ? '#98989D' : '#666'} />
-            <Text style={[styles.infoText, { color: theme.colors.text }]}>San Francisco, CA</Text>
-          </View>
-        </GlassView>
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Sound Direction Hunt</Text>
+          <Text style={styles.cardText}>
+            Version 1.0.0
+          </Text>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Accessibility First</Text>
+          <Text style={styles.cardText}>
+            This game was designed from the ground up to be fully accessible to blind and 
+            visually impaired users. Every aspect of the game can be played using only audio 
+            cues, haptic feedback, and touch gestures.
+          </Text>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Features</Text>
+          <Text style={styles.cardText}>
+            - Spatial audio for directional sound cues
+          </Text>
+          <Text style={styles.cardText}>
+            - Haptic feedback for game events
+          </Text>
+          <Text style={styles.cardText}>
+            - Voice guidance and announcements
+          </Text>
+          <Text style={styles.cardText}>
+            - Three difficulty levels
+          </Text>
+          <Text style={styles.cardText}>
+            - Progressive difficulty system
+          </Text>
+          <Text style={styles.cardText}>
+            - Score tracking
+          </Text>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Tips for Best Experience</Text>
+          <Text style={styles.cardText}>
+            - Use headphones for better spatial audio
+          </Text>
+          <Text style={styles.cardText}>
+            - Enable haptic feedback in your device settings
+          </Text>
+          <Text style={styles.cardText}>
+            - Start with slow difficulty to learn the game
+          </Text>
+          <Text style={styles.cardText}>
+            - Play in a quiet environment
+          </Text>
+        </View>
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-  },
   container: {
     flex: 1,
+    backgroundColor: colors.background,
   },
-  contentContainer: {
-    padding: 20,
+  scrollContent: {
+    paddingTop: 20,
+    paddingHorizontal: 20,
+    paddingBottom: 40,
   },
-  profileHeader: {
+  header: {
+    marginBottom: 30,
     alignItems: 'center',
-    borderRadius: 12,
-    padding: 32,
-    marginBottom: 16,
-    gap: 12,
   },
-  name: {
-    fontSize: 24,
+  title: {
+    fontSize: 32,
     fontWeight: 'bold',
+    color: colors.text,
+    textAlign: 'center',
   },
-  email: {
-    fontSize: 16,
-  },
-  section: {
+  card: {
+    backgroundColor: colors.card,
     borderRadius: 12,
     padding: 20,
-    gap: 12,
+    marginBottom: 20,
+    boxShadow: '0px 2px 4px rgba(0, 0, 0, 0.1)',
+    elevation: 2,
   },
-  infoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
+  cardTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginBottom: 12,
   },
-  infoText: {
+  cardText: {
     fontSize: 16,
+    color: colors.text,
+    lineHeight: 24,
+    marginBottom: 8,
   },
 });
