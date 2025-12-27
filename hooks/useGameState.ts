@@ -115,7 +115,7 @@ export function useGameState() {
     await audioEngine.initialize();
     
     // Play voice instructions
-    await audioEngine.speak('Game starting. Listen for the sound direction and tap the corresponding area. You have three lives. Get ten correct in a row to earn a bonus life.');
+    await audioEngine.speak('The game begins!');
     
     setGameState({
       score: 0,
